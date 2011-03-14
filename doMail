@@ -1,0 +1,3 @@
+#!/bin/sh
+
+mvn exec:exec -Drun-main-class=org.neo4j.bench.notification.mail.SampleMail $@
