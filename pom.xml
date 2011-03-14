@@ -6,7 +6,7 @@
 	</parent>
 	
 	<properties>
-		<neo-version>1.2-SNAPSHOT</neo-version>
+		<neo-version>1.3-SNAPSHOT</neo-version>
 		<jvm-memory>768M</jvm-memory>
 		<run-main-class>Please supply it via argument</run-main-class>
 		<threshold/>
