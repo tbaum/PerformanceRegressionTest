@@ -40,20 +40,20 @@ public class Main
 {
     public static void main( String[] args ) throws Exception
     {
-        Args argz = new Args(args);
-        long timeToRun = Long.parseLong( argz.get( "time-to-run", "1" ) ); // Time in minutes
+        Args argz = new Args( args );
+        long timeToRun = Long.parseLong( argz.get( "time-to-run", "1" ) ); // Time
+                                                                           // in
+                                                                           // minutes
         final GraphDatabaseService db = new EmbeddedGraphDatabase( "db" );
+        final MixedLoadBenchCase myCase = new MixedLoadBenchCase( timeToRun );
+
         SignalHandler handler = new SignalHandler()
         {
             @Override
             public void handle( Signal arg0 )
             {
-                int count = 0;
-                for (Node n : db.getAllNodes())
-                {
-                    count++;
-                }
-                System.out.println("There are "+count+" nodes in the db");
+                System.out.println( "Queued nodes currently : "
+                                    + myCase.getNodeQueue().size() );
             }
         };
         /*
@@ -63,29 +63,34 @@ public class Main
          * behavior so this is what I use.
          */
         Signal signal = new Signal( "USR2" );
-
         Signal.handle( signal, handler );
-        MixedLoadBenchCase myCase = new MixedLoadBenchCase(timeToRun);
-        myCase.run( db );
 
+        myCase.run( db );
         db.shutdown();
         double[] results = myCase.getResults();
-        Stats newStats = new Stats(new SimpleDateFormat( "MM-dd-HH-mm" ).format( new Date() ));
+        Stats newStats = new Stats(
+                new SimpleDateFormat( "MM-dd-HH-mm" ).format( new Date() ) );
         newStats.setAvgReadsPerSec( results[0] );
         newStats.setAvgWritePerSec( results[1] );
         newStats.setPeakReadsPerSec( results[2] );
         newStats.setPeakWritesPerSec( results[3] );
-        
-        String statsFilename = argz.get( GenerateOpsPerSecChart.OPS_PER_SECOND_FILE_ARG, "ops-per-second" );
-        String chartFilename = argz.get( GenerateOpsPerSecChart.CHART_FILE_ARG, "chart.png" );
+        newStats.setSustainedReadsPerSec( results[4] );
+        newStats.setSustainedWritesPerSec( results[5] );
+
+        String statsFilename = argz.get(
+                GenerateOpsPerSecChart.OPS_PER_SECOND_FILE_ARG,
+                "ops-per-second" );
+        String chartFilename = argz.get( GenerateOpsPerSecChart.CHART_FILE_ARG,
+                "chart.png" );
         double threshold = Double.parseDouble( argz.get( "threshold", "0.05" ) );
-        
+
         PrintStream opsPerSecOutFile = new PrintStream( new FileOutputStream(
                 statsFilename, true ) );
-        
+
         newStats.write( opsPerSecOutFile, true );
 
-        GenerateOpsPerSecChart aggreegator = new GenerateOpsPerSecChart( statsFilename, chartFilename, threshold );
+        GenerateOpsPerSecChart aggreegator = new GenerateOpsPerSecChart(
+                statsFilename, chartFilename, threshold );
         aggreegator.process();
     }
 }

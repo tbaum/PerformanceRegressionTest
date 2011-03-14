@@ -23,6 +23,7 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Queue;
 import java.util.Random;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -38,47 +39,80 @@ import org.neo4j.bench.cases.mixedload.workers.PropertyAddWorker;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 
+/**
+ * The main driver for the operation performer threads. Keeps the probabilities
+ * with which each thread type is launched and aggregates the results of their
+ * runs.
+ *
+ * @author <a href=mailto:chris.gioran@neotechnology.com> Chris Gioran </a>
+ *
+ */
 public class MixedLoadBenchCase
 {
+    private enum WorkerType
+    {
+        SIMPLE,
+        BULK
+    }
 
-    private final List<Future<int[]>> tasks;
-    private double[] totals;
+    // Keeps the list of simple workers futures
+    private final List<Future<int[]>> simpleTasks;
+    // Keeps the list of bulk workers futures
+    private final List<Future<int[]>> bulkTasks;
+    // The queue of nodes created/deleted
+    private final LinkedBlockingQueue<Node> nodes;
+
+    private long totalReads = 0;
+    private long totalWrites = 0;
+    private long totalTime = 0;
+    // Current max values
     private double peakReads = 0;
     private double peakWrites = 0;
+    private double sustainedReads = 0;
+    private double sustainedWrites = 0;
+    // Time to run, in minutes
     private final long timeToRun;
 
     public MixedLoadBenchCase( long timeToRun )
     {
-        tasks = new LinkedList<Future<int[]>>();
-        totals = new double[4];
-        totals[0] = 0;
-        totals[1] = 0;
+        simpleTasks = new LinkedList<Future<int[]>>();
+        bulkTasks = new LinkedList<Future<int[]>>();
         this.timeToRun = timeToRun;
+        nodes = new LinkedBlockingQueue<Node>();
     }
 
     public double[] getResults()
     {
+        double[] totals = new double[6];
+        totals[0] = totalReads * 1.0 / totalTime;
+        totals[1] = totalWrites * 1.0 / totalTime;
         totals[2] = peakReads;
         totals[3] = peakWrites;
-        return Arrays.copyOf( totals, 4 );
+        totals[4] = sustainedReads;
+        totals[5] = sustainedWrites;
+        return Arrays.copyOf( totals, totals.length );
+    }
+
+    public Queue<Node> getNodeQueue()
+    {
+        return nodes;
     }
 
     public void run( GraphDatabaseService graphDb )
     {
-        LinkedBlockingQueue<Node> nodes = new LinkedBlockingQueue<Node>();
+
         int maxThreads = Runtime.getRuntime().availableProcessors() + 2;
         ExecutorService service = Executors.newFixedThreadPool( maxThreads );
         Random r = new Random();
 
         long startTime = System.currentTimeMillis();
-        tasks.add( service.submit( new BulkCreateWorker( graphDb, nodes, 1000 ) ) );
         try
         {
-            Thread.sleep( 1000 );
+            service.submit( new BulkCreateWorker( graphDb, nodes, 2000 ) ).get();
         }
-        catch ( InterruptedException e1 )
+        catch ( Exception e )
         {
-            e1.printStackTrace();
+            e.printStackTrace();
         }
 
         while ( System.currentTimeMillis() - startTime < timeToRun * 60 * 1000 )
@@ -86,39 +120,43 @@ public class MixedLoadBenchCase
             double dice = r.nextDouble();
             if ( dice > 0.5 )
             {
-                tasks.add( service.submit( new CreateWorker( graphDb, nodes,
-                        300 ) ) );
+                simpleTasks.add( service.submit( new CreateWorker( graphDb,
+                        nodes, 300 ) ) );
             }
             else if ( dice > 0.1 )
             {
-                tasks.add( service.submit( new DeleteWorker( graphDb, nodes, 20 ) ) );
+                simpleTasks.add( service.submit( new DeleteWorker( graphDb,
+                        nodes, 20 ) ) );
             }
-            else
+            if ( r.nextDouble() > 0.3 )
             {
-                tasks.add( service.submit( new BulkCreateWorker( graphDb,
-                        nodes, 40 ) ) );
+                bulkTasks.add( service.submit( new BulkCreateWorker( graphDb,
+                        nodes, 2000 ) ) );
             }
             if ( r.nextDouble() < 0.1 )
             {
-                tasks.add( service.submit( new BulkReaderWorker( graphDb ) ) );
+                bulkTasks.add( service.submit( new BulkReaderWorker( graphDb ) ) );
             }
             if ( r.nextBoolean() )
             {
-                tasks.add( service.submit( new PropertyAddWorker( graphDb,
-                        nodes, 20 ) ) );
+                simpleTasks.add( service.submit( new PropertyAddWorker(
+                        graphDb, nodes, 20 ) ) );
             }
             try
             {
-                while ( tasks.size() > maxThreads*2 / 3 )
+                while ( simpleTasks.size() + bulkTasks.size() > maxThreads - 2 )
                 {
-                    getFinished();
+                    gatherUp( simpleTasks, WorkerType.SIMPLE, false );
+                    gatherUp( bulkTasks, WorkerType.BULK, false );
                 }
                 System.out.println( "Intermediate results:" );
-                System.out.println( "Total reads: " + totals[0] );
-                System.out.println( "Total writes: " + totals[1] );
-                System.out.println( "Total time: " + totals[2] );
+                System.out.println( "Total reads: " + totalReads );
+                System.out.println( "Total writes: " + totalWrites );
+                System.out.println( "Total time: " + totalTime );
                 System.out.println( "Peak reads:" + peakReads );
                 System.out.println( "Peak writes: " + peakWrites );
+                System.out.println( "Sustained reads: " + sustainedReads );
+                System.out.println( "Sustained writes: " + sustainedWrites );
             }
             catch ( InterruptedException e )
             {
@@ -131,38 +169,65 @@ public class MixedLoadBenchCase
         }
         catch ( InterruptedException e )
         {
-            // TODO Auto-generated catch block
             e.printStackTrace();
         }
-        System.out.println( "Total reads: " + totals[0] );
-        System.out.println( "Total writes: " + totals[1] );
-        System.out.println( "Total time: " + totals[2] );
+        System.out.println( "Total reads: " + totalReads );
+        System.out.println( "Total writes: " + totalWrites );
+        System.out.println( "Total time: " + totalTime );
         System.out.println( "Peak reads:" + peakReads );
         System.out.println( "Peak writes: " + peakWrites );
+        System.out.println( "Sustained reads: " + sustainedReads );
+        System.out.println( "Sustained writes: " + sustainedWrites );
         System.out.println( "Run for "
                             + ( System.currentTimeMillis() - startTime )
                             / 60000 + " minutes" );
         service.shutdown();
     }
 
-    private void getFinished() throws InterruptedException
+    /**
+     * 
+     * @param tasks The list of Futures to gather
+     * @param type The type of tasks - used for statistics generation
+     * @param sweepUp True if this method should wait for unfinished tasks if
+     *            false, not done tasks are skipped
+     * @throws InterruptedException
+     */
+    private void gatherUp( List<Future<int[]>> tasks, WorkerType type,
+            boolean sweepUp ) throws InterruptedException
     {
         Iterator<Future<int[]>> it = tasks.iterator();
         while ( it.hasNext() )
         {
             Future<int[]> task = it.next();
-            if ( task.isDone() )
+            // Short circuit - if sweepUp is true, we gather everything up, else
+            // only finished
+            if ( sweepUp || task.isDone() )
             {
                 try
                 {
                     int[] taskRes = task.get();
-                    totals[0] += taskRes[0];
-                    totals[1] += taskRes[1];
-                    totals[2] += taskRes[2];
-                    double thisReads = taskRes[0] * 1000.0 / taskRes[2];
-                    double thisWrites = taskRes[1] * 1000.0 / taskRes[2];
-                    if ( thisReads > peakReads ) peakReads = thisReads;
-                    if ( thisWrites > peakWrites ) peakWrites = thisWrites;
+                    totalReads += taskRes[0];
+                    totalWrites += taskRes[1];
+                    totalTime += taskRes[2];
+                    // These are the means for this run
+                    double thisReads = taskRes[0]
+                                       / ( taskRes[2] == 0 ? 1 : taskRes[2] );
+                    double thisWrites = taskRes[1]
+                                        / ( taskRes[2] == 0 ? 1 : taskRes[2] );
+                    if ( type == WorkerType.BULK )
+                    {
+                        if ( thisReads > sustainedReads )
+                            sustainedReads = thisReads;
+                        if ( thisWrites > sustainedWrites )
+                            sustainedWrites = thisWrites;
+                    }
+                    // The test run for more than 0.05 sec, long enough for
+                    // getting a peak value
+                    if ( taskRes[2] > 50 )
+                    {
+                        if ( thisReads > peakReads ) peakReads = thisReads;
+                        if ( thisWrites > peakWrites ) peakWrites = thisWrites;
+                    }
                 }
                 catch ( ExecutionException e )
                 {
@@ -181,31 +246,7 @@ public class MixedLoadBenchCase
 
     private void getAll() throws InterruptedException
     {
-        Iterator<Future<int[]>> it = tasks.iterator();
-        while ( it.hasNext() )
-        {
-            Future<int[]> task = it.next();
-            try
-            {
-                int[] taskRes = task.get();
-                totals[0] += taskRes[0];
-                totals[1] += taskRes[1];
-                totals[2] += taskRes[2];
-                double thisReads = taskRes[0] * 1000.0 / taskRes[2];
-                double thisWrites = taskRes[1] * 1000.0 / taskRes[2];
-                if ( thisReads > peakReads ) peakReads = thisReads;
-                if ( thisWrites > peakWrites ) peakWrites = thisWrites;
-            }
-            catch ( ExecutionException e )
-            {
-                // It threw an exception, print and continue
-                e.printStackTrace();
-                continue;
-            }
-            finally
-            {
-                it.remove();
-            }
-        }
+        gatherUp( simpleTasks, WorkerType.SIMPLE, true );
+        gatherUp( bulkTasks, WorkerType.BULK, true );
     }
 }

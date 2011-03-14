@@ -118,12 +118,15 @@ public class GenerateOpsPerSecChart
     private DefaultCategoryDataset generateDataset()
     {
         DefaultCategoryDataset dataset = new DefaultCategoryDataset();
+        
         for ( Stats key : dataToDraw )
         {
             dataset.addValue( key.getAvgReadsPerSec(), "reads", key.getName() );
             dataset.addValue( key.getAvgWritePerSec(), "writes", key.getName() );
-            dataset.addValue( key.getPeakReadsPerSec(), "peak reads", key.getName() );
+            dataset.addValue( key.getPeakReadsPerSec()/100, "peak reads", key.getName() );
             dataset.addValue( key.getPeakWritesPerSec(), "peak writes", key.getName() );
+            dataset.addValue( key.getSustainedReadsPerSec()/100, "sust reads", key.getName() );
+            dataset.addValue( key.getSustainedWritesPerSec(), "sust writes", key.getName() );
         }
         return dataset;
     }

@@ -61,13 +61,15 @@ public class BulkCreateWorker implements Callable<int[]>
     public int[] call() throws Exception
     {
         List<Node> myNodes = new LinkedList<Node>();
+        int[] result = new int[3];
         long time = System.currentTimeMillis();
+
         Transaction tx = graphDb.beginTx();
         try
         {
             while ( ops-- > 0 )
             {
-                if ( r.nextDouble() < 0.75 || myNodes.size() < 4 )
+                if ( myNodes.size() < 4 || r.nextDouble() < 0.75 )
                 {
                     myNodes.add( graphDb.createNode() );
                     writes += 1;
@@ -88,7 +90,6 @@ public class BulkCreateWorker implements Callable<int[]>
         {
             tx.finish();
         }
-        int[] result = new int[3];
         result[0] = reads;
         result[1] = writes;
         result[2] = (int) (System.currentTimeMillis() - time);
@@ -123,5 +124,3 @@ public class BulkCreateWorker implements Callable<int[]>
         writes += 1; // For the relationship
     }
 }
-
-
