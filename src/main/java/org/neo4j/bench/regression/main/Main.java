@@ -41,7 +41,7 @@ public class Main
     public static void main( String[] args ) throws Exception
     {
         Args argz = new Args( args );
-        long timeToRun = Long.parseLong( argz.get( "time-to-run", "1" ) ); // Time
+        long timeToRun = Long.parseLong( argz.get( "time-to-run", "120" ) ); // Time
                                                                            // in
                                                                            // minutes
         final GraphDatabaseService db = new EmbeddedGraphDatabase( "db" );
