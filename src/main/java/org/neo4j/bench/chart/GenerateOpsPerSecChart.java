@@ -124,9 +124,9 @@ public class GenerateOpsPerSecChart
             dataset.addValue( key.getAvgReadsPerSec(), "reads", key.getName() );
             dataset.addValue( key.getAvgWritePerSec(), "writes", key.getName() );
             dataset.addValue( key.getPeakReadsPerSec()/100, "peak reads", key.getName() );
-            dataset.addValue( key.getPeakWritesPerSec(), "peak writes", key.getName() );
+            dataset.addValue( key.getPeakWritesPerSec()/100, "peak writes", key.getName() );
             dataset.addValue( key.getSustainedReadsPerSec()/100, "sust reads", key.getName() );
-            dataset.addValue( key.getSustainedWritesPerSec(), "sust writes", key.getName() );
+            dataset.addValue( key.getSustainedWritesPerSec()/100, "sust writes", key.getName() );
         }
         return dataset;
     }

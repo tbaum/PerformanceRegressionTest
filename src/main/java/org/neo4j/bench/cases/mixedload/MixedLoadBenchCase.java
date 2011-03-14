@@ -59,6 +59,7 @@ public class MixedLoadBenchCase
     private final List<Future<int[]>> simpleTasks;
     // Keeps the list of bulk workers futures
     private final List<Future<int[]>> bulkTasks;
+    private int tasksExecuted;
     // The queue of nodes created/deleted
     private final LinkedBlockingQueue<Node> nodes;
 
@@ -79,6 +80,7 @@ public class MixedLoadBenchCase
         bulkTasks = new LinkedList<Future<int[]>>();
         this.timeToRun = timeToRun;
         nodes = new LinkedBlockingQueue<Node>();
+        tasksExecuted = 0;
     }
 
     public double[] getResults()
@@ -108,7 +110,7 @@ public class MixedLoadBenchCase
         long startTime = System.currentTimeMillis();
         try
         {
-            service.submit( new BulkCreateWorker( graphDb, nodes, 2000 ) ).get();
+            service.submit( new BulkCreateWorker( graphDb, nodes, 10000 ) ).get();
         }
         catch ( Exception e )
         {
@@ -121,12 +123,12 @@ public class MixedLoadBenchCase
             if ( dice > 0.5 )
             {
                 simpleTasks.add( service.submit( new CreateWorker( graphDb,
-                        nodes, 300 ) ) );
+                        nodes, r.nextInt( 1000 ) ) ) );
             }
             else if ( dice > 0.1 )
             {
                 simpleTasks.add( service.submit( new DeleteWorker( graphDb,
-                        nodes, 20 ) ) );
+                        nodes, r.nextInt( 1000 ) ) ) );
             }
             if ( r.nextDouble() > 0.3 )
             {
@@ -140,7 +142,7 @@ public class MixedLoadBenchCase
             if ( r.nextBoolean() )
             {
                 simpleTasks.add( service.submit( new PropertyAddWorker(
-                        graphDb, nodes, 20 ) ) );
+                        graphDb, nodes, 200 ) ) );
             }
             try
             {
@@ -149,14 +151,7 @@ public class MixedLoadBenchCase
                     gatherUp( simpleTasks, WorkerType.SIMPLE, false );
                     gatherUp( bulkTasks, WorkerType.BULK, false );
                 }
-                System.out.println( "Intermediate results:" );
-                System.out.println( "Total reads: " + totalReads );
-                System.out.println( "Total writes: " + totalWrites );
-                System.out.println( "Total time: " + totalTime );
-                System.out.println( "Peak reads:" + peakReads );
-                System.out.println( "Peak writes: " + peakWrites );
-                System.out.println( "Sustained reads: " + sustainedReads );
-                System.out.println( "Sustained writes: " + sustainedWrites );
+                printOutResults( "Intermediate results" );
             }
             catch ( InterruptedException e )
             {
@@ -171,17 +166,24 @@ public class MixedLoadBenchCase
         {
             e.printStackTrace();
         }
-        System.out.println( "Total reads: " + totalReads );
-        System.out.println( "Total writes: " + totalWrites );
-        System.out.println( "Total time: " + totalTime );
-        System.out.println( "Peak reads:" + peakReads );
-        System.out.println( "Peak writes: " + peakWrites );
-        System.out.println( "Sustained reads: " + sustainedReads );
-        System.out.println( "Sustained writes: " + sustainedWrites );
+        printOutResults( "Final results" );
         System.out.println( "Run for "
                             + ( System.currentTimeMillis() - startTime )
                             / 60000 + " minutes" );
         service.shutdown();
+    }
+    
+    private void printOutResults(String header)
+    {
+        System.out.println( header );
+        System.out.println( "Total time (ms): " + totalTime );
+        System.out.println( "Total reads: " + totalReads );
+        System.out.println( "Total writes: " + totalWrites );
+        System.out.println( "Peak reads per ms:" + peakReads );
+        System.out.println( "Peak writes per ms: " + peakWrites );
+        System.out.println( "Peak Sustained reads per ms: " + sustainedReads );
+        System.out.println( "Peak Sustained writes per ms: " + sustainedWrites );
+        System.out.println();
     }
 
     /**
@@ -203,6 +205,7 @@ public class MixedLoadBenchCase
             // only finished
             if ( sweepUp || task.isDone() )
             {
+                tasksExecuted++;
                 try
                 {
                     int[] taskRes = task.get();
@@ -214,16 +217,17 @@ public class MixedLoadBenchCase
                                        / ( taskRes[2] == 0 ? 1 : taskRes[2] );
                     double thisWrites = taskRes[1]
                                         / ( taskRes[2] == 0 ? 1 : taskRes[2] );
-                    if ( type == WorkerType.BULK )
+                    // Sustained operations must be at least as long as half the average runtime
+                    if ( type == WorkerType.BULK && taskRes[2] > totalTime*0.5/tasksExecuted )
                     {
                         if ( thisReads > sustainedReads )
                             sustainedReads = thisReads;
                         if ( thisWrites > sustainedWrites )
                             sustainedWrites = thisWrites;
                     }
-                    // The test run for more than 0.05 sec, long enough for
+                    // The test run for more than 10% of the average time, long enough for
                     // getting a peak value
-                    if ( taskRes[2] > 50 )
+                    if ( taskRes[2] > totalTime*0.1/tasksExecuted )
                     {
                         if ( thisReads > peakReads ) peakReads = thisReads;
                         if ( thisWrites > peakWrites ) peakWrites = thisWrites;
