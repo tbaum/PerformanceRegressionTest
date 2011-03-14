@@ -26,28 +26,28 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.Iterator;
-import java.util.Map;
 import java.util.Set;
-import java.util.SortedMap;
-import java.util.StringTokenizer;
-import java.util.TreeMap;
+import java.util.SortedSet;
+import java.util.TreeSet;
 
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.ChartUtilities;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.plot.PlotOrientation;
 import org.jfree.data.category.DefaultCategoryDataset;
+import org.neo4j.bench.cases.mixedload.Stats;
 
 public class GenerateOpsPerSecChart
 {
     private static final int TESTS_TO_DRAW = 10;
-    public static final String OPS_PER_SECOND_FILE = "ops-per-second";
+    public static final String OPS_PER_SECOND_FILE_ARG = "ops-per-sec-file";
+    public static final String CHART_FILE_ARG = "chart-file";
 
     private String inputFilename;
     private String outputFilename;
     private boolean alarm;
-    private SortedMap<String, double[]> data;
-    private Map<String, double[]> dataToDraw;
+    private SortedSet<Stats> data;
+    private Set<Stats> dataToDraw;
     private double threshold;
 
     public GenerateOpsPerSecChart( String inputFilename, String outputFilename,
@@ -61,17 +61,16 @@ public class GenerateOpsPerSecChart
 
     public boolean process() throws Exception
     {
-        Set<String> versions = data.keySet();
         // Take the 10 latest
-        if ( versions.size() > TESTS_TO_DRAW )
+        if ( data.size() > TESTS_TO_DRAW )
         {
-            Iterator<String> it = versions.iterator();
+            Iterator<Stats> it = data.iterator();
             int i = 0;
-            while ( versions.size() - i++ > TESTS_TO_DRAW )
+            while ( data.size() - i++ > TESTS_TO_DRAW )
             {
                 it.next();
             }
-            dataToDraw = data.tailMap( it.next() );
+            dataToDraw = data.tailSet(  it.next() );
         }
         else
         {
@@ -82,21 +81,18 @@ public class GenerateOpsPerSecChart
         return alarm;
     }
 
-    private String detectDegradation( double threshold )
+    private Stats detectDegradation( double threshold )
     {
-        String latestRun = data.lastKey();
+        Stats latestRun = data.last();
         System.out.println( "Latest run test is " + latestRun );
-        double[] latestNumbers = data.get( latestRun );
-        System.out.println( "With values " + latestNumbers[0] + ", "
-                            + latestNumbers[1] );
-        for ( Map.Entry<String, double[]> previous : data.headMap( latestRun ).entrySet() )
+        for ( Stats previous : data.headSet( latestRun ) )
         {
-            double previousReads = previous.getValue()[0];
-            double previousWrites = previous.getValue()[1];
-            if ( previousReads * ( 1 + threshold ) > latestNumbers[0]
-                 || previousWrites * ( 1 + threshold ) > latestNumbers[1] )
+            double previousReads = previous.getAvgReadsPerSec();
+            double previousWrites = previous.getAvgWritePerSec();
+            if ( previousReads * ( 1 + threshold ) > latestRun.getAvgReadsPerSec()
+                 || previousWrites * ( 1 + threshold ) > latestRun.getAvgWritePerSec() )
             {
-                return previous.getKey();
+                return previous;
             }
         }
         return null;
@@ -122,29 +118,21 @@ public class GenerateOpsPerSecChart
     private DefaultCategoryDataset generateDataset()
     {
         DefaultCategoryDataset dataset = new DefaultCategoryDataset();
-        for ( String key : dataToDraw.keySet() )
+        for ( Stats key : dataToDraw )
         {
-            double[] rw = dataToDraw.get( key );
-            dataset.addValue( rw[0], "reads", key );
-            dataset.addValue( rw[1], "writes", key );
-            dataset.addValue( rw[2], "peak reads", key );
-            dataset.addValue( rw[3], "peak writes", key );
+            dataset.addValue( key.getAvgReadsPerSec(), "reads", key.getName() );
+            dataset.addValue( key.getAvgWritePerSec(), "writes", key.getName() );
+            dataset.addValue( key.getPeakReadsPerSec(), "peak reads", key.getName() );
+            dataset.addValue( key.getPeakWritesPerSec(), "peak writes", key.getName() );
         }
         return dataset;
     }
 
     /**
      * Opens the operations per second file, reads in the contents and creates a
-     * Map from the version name to an array of four doubles, the first being
-     * the average read operations per second, the second the write operations
-     * per second, the third the peak read operations per second and the fourth
-     * the peak write operations per second. If any I/O error occurs, including
-     * a non-existent file, it returns null.
-     * 
-     * @param arguments The arguments as passed in main
-     * @return A Map from version to operations per second
+     * SortedSet of the therein stored Stats.
      */
-    public static SortedMap<String, double[]> loadOpsPerSecond( String fileName )
+    public static SortedSet<Stats> loadOpsPerSecond( String fileName )
     {
         File dataFile = new File( fileName );
         if ( !dataFile.exists() )
@@ -152,52 +140,19 @@ public class GenerateOpsPerSecChart
             return null;
         }
         BufferedReader reader = null;
-        SortedMap<String, double[]> result = new TreeMap<String, double[]>();
+        SortedSet<Stats> result = new TreeSet<Stats>();
+        Stats currentStat;
         try
         {
             reader = new BufferedReader( new FileReader( dataFile ) );
-            String line, // The current line
-            versionToken, // The current version token
-            readsToken, // The current reads per second token
-            writesToken, // The current writes per second token
-            peakReadsToken, // The current peak reads token
-            peakWritesToken // The current peak writes token
-            ;
-            double reads, writes, peakReads, peakWrites; // The double values of
-                                                         // the corresponding
-                                                         // tokens
+            String line; // The current line
             while ( ( line = reader.readLine() ) != null )
             {
-                StringTokenizer tokenizer = new StringTokenizer( line, "\t" );
-                if ( tokenizer.countTokens() < 5 )
+                currentStat = Stats.parse( line );
+                if ( currentStat != null )
                 {
-                    continue;
+                    result.add( currentStat );
                 }
-                // Grab the tokens
-                versionToken = tokenizer.nextToken();
-                readsToken = tokenizer.nextToken();
-                writesToken = tokenizer.nextToken();
-                peakReadsToken = tokenizer.nextToken();
-                peakWritesToken = tokenizer.nextToken();
-                // Parse the integer values, check for validity
-                try
-                {
-                    reads = Double.valueOf( readsToken );
-                    writes = Double.valueOf( writesToken );
-                    peakReads = Double.valueOf( peakReadsToken );
-                    peakWrites = Double.valueOf( peakWritesToken );
-                }
-                catch ( NumberFormatException e )
-                {
-                    // This is stupid but there is no other way
-                    continue;
-                }
-                double[] opsStats = new double[4];
-                opsStats[0] = reads;
-                opsStats[1] = writes;
-                opsStats[2] = peakReads;
-                opsStats[3] = peakWrites;
-                result.put( versionToken, opsStats );
             }
         }
         catch ( IOException e )

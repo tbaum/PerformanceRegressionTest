@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# Simple script to continuously run the performance benchmark
+# until killed, the stop file created or a statistically significant
+# decrease in performance is detected.
+
+# Comments and corrections to chris.gioran@neotechnology.com
+
+# We print to console and to file and this requires a tee. However
+# we need to keep the exit code of the utility doing the writing and
+# not that of tee. So we set this below. Note that this is a feature of
+# bash only but this should not be that much of a problem
+set -o pipefail
+
+function createTarball {
+	# Move the results file to the results directory
+	if [ -f chart.png ]; then
+		cp chart.png "$THE_FOLDER"
+	fi
+	# Create the tarball of the current results
+	tar zcf "$TARPIT/$THE_CURRENT_FOLDER.tgz" "$THE_FOLDER"
+	# Finally, remove all traces
+	rm -rf  "$THE_FOLDER"
+}
+
+# Timestamped directory to hold results of the run
+TARPIT=tarpit
+THE_CURRENT_FOLDER=`date +%0Y%0m%0d%0H%0M%0S`;
+THE_FOLDER="$TARPIT/$THE_CURRENT_FOLDER"
+mkdir -p "$THE_FOLDER"
+echo "Storing results in $THE_FOLDER"
+
+echo "Started test run"
+
+# First, delete the database folder, start a fresh run
+if [ -d db ]; then
+	rm -rf db/
+fi
+
+# We start our run. If the actual benchmarks fail then this is probably
+# an unrecoverable error. Instead of continuously mailing failure, we
+# mail and exit. If the measurements on the other hand are not satisfactory
+# there is not reason to stop - just keep running.
+mvn exec:exec -Drun-main-class=org.neo4j.bench.regression.main.Main $@ | tee "$THE_FOLDER/raw"
+if [ "0" -ne $? ]; then
+	createTarball
+	exit 1
+fi
+# Done with the run, create the tarball of the results
+createTarball

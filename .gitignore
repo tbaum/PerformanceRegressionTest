@@ -1,7 +1,9 @@
-foo
-chart.png
+db
+*.png
+tarpit/
 .classpath
 bin
 .project
 .settings/
 target
+ops-per-second

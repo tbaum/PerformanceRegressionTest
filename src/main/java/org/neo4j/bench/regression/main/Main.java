@@ -6,9 +6,11 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 
 import org.neo4j.bench.cases.mixedload.MixedLoadBenchCase;
+import org.neo4j.bench.cases.mixedload.Stats;
 import org.neo4j.bench.chart.GenerateOpsPerSecChart;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
+import org.neo4j.helpers.Args;
 import org.neo4j.kernel.EmbeddedGraphDatabase;
 
 import sun.misc.Signal;
@@ -19,7 +21,9 @@ public class Main
 {
     public static void main( String[] args ) throws Exception
     {
-        final GraphDatabaseService db = new EmbeddedGraphDatabase( "foo" );
+        Args argz = new Args(args);
+        long timeToRun = Long.parseLong( argz.get( "time-to-run", "1" ) ); // Time in minutes
+        final GraphDatabaseService db = new EmbeddedGraphDatabase( "db" );
         SignalHandler handler = new SignalHandler()
         {
             @Override
@@ -42,20 +46,27 @@ public class Main
         Signal signal = new Signal( "USR2" );
 
         Signal.handle( signal, handler );
-        MixedLoadBenchCase myCase = new MixedLoadBenchCase();
+        MixedLoadBenchCase myCase = new MixedLoadBenchCase(timeToRun);
         myCase.run( db );
 
         db.shutdown();
         double[] results = myCase.getResults();
+        Stats newStats = new Stats(new SimpleDateFormat( "MM-dd-HH-mm" ).format( new Date() ));
+        newStats.setAvgReadsPerSec( results[0] );
+        newStats.setAvgWritePerSec( results[1] );
+        newStats.setPeakReadsPerSec( results[2] );
+        newStats.setPeakWritesPerSec( results[3] );
+        
+        String statsFilename = argz.get( GenerateOpsPerSecChart.OPS_PER_SECOND_FILE_ARG, "ops-per-second" );
+        String chartFilename = argz.get( GenerateOpsPerSecChart.CHART_FILE_ARG, "chart.png" );
+        double threshold = Double.parseDouble( argz.get( "threshold", "0.05" ) );
         
         PrintStream opsPerSecOutFile = new PrintStream( new FileOutputStream(
-                "ops-per-second", true ) );
-        opsPerSecOutFile.println( String.format( "%s\t%.2f\t%.2f\t%.2f\t%.2f",
-                new SimpleDateFormat( "MM-dd-HH-mm" ).format( new Date() ),
-                results[0], results[1], results[2], results[3]
-                ));
+                statsFilename, true ) );
+        
+        newStats.write( opsPerSecOutFile, true );
 
-        GenerateOpsPerSecChart aggreegator = new GenerateOpsPerSecChart( "ops-per-second", "chart.png", 0.05 );
+        GenerateOpsPerSecChart aggreegator = new GenerateOpsPerSecChart( statsFilename, chartFilename, threshold );
         aggreegator.process();
     }
 }
