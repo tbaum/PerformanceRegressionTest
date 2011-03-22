@@ -28,7 +28,6 @@ import org.neo4j.bench.cases.mixedload.MixedLoadBenchCase;
 import org.neo4j.bench.cases.mixedload.Stats;
 import org.neo4j.bench.chart.GenerateOpsPerSecChart;
 import org.neo4j.graphdb.GraphDatabaseService;
-import org.neo4j.graphdb.Node;
 import org.neo4j.helpers.Args;
 import org.neo4j.kernel.EmbeddedGraphDatabase;
 

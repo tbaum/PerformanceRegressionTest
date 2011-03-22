@@ -25,7 +25,7 @@ function createTarball {
 
 # Timestamped directory to hold results of the run
 TARPIT=tarpit
-THE_CURRENT_FOLDER=`date +%0Y%0m%0d%0H%0M%0S`;
+THE_CURRENT_FOLDER=`date +%Y%m%d%H%M%S`;
 THE_FOLDER="$TARPIT/$THE_CURRENT_FOLDER"
 mkdir -p "$THE_FOLDER"
 echo "Storing results in $THE_FOLDER"

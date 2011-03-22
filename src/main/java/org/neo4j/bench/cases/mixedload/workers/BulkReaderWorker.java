@@ -45,22 +45,25 @@ public class BulkReaderWorker implements Callable<int[]>
     public int[] call() throws Exception
     {
         long time = System.currentTimeMillis();
-        for ( Node node : graphDb.getAllNodes() )
+        for (int i = 0; i < 10; i++)
         {
-            reads += 1;
-            for ( Relationship r : node.getRelationships() )
+            for ( Node node : graphDb.getAllNodes() )
             {
                 reads += 1;
-                for (String propertyKey : r.getPropertyKeys())
+                for ( Relationship r : node.getRelationships() )
                 {
-                    r.getProperty( propertyKey );
+                    reads += 1;
+                    for (String propertyKey : r.getPropertyKeys())
+                    {
+                        r.getProperty( propertyKey );
+                        reads += 2; // Prop key and prop value
+                    }
+                }
+                for (String propertyKey : node.getPropertyKeys())
+                {
+                    node.getProperty( propertyKey );
                     reads += 2; // Prop key and prop value
                 }
-            }
-            for (String propertyKey : node.getPropertyKeys())
-            {
-                node.getProperty( propertyKey );
-                reads += 2; // Prop key and prop value
             }
         }
 

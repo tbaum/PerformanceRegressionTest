@@ -110,7 +110,7 @@ public class MixedLoadBenchCase
         long startTime = System.currentTimeMillis();
         try
         {
-            service.submit( new BulkCreateWorker( graphDb, nodes, 10000 ) ).get();
+            service.submit( new BulkCreateWorker( graphDb, nodes, 100000 ) ).get();
         }
         catch ( Exception e )
         {
@@ -150,6 +150,7 @@ public class MixedLoadBenchCase
                 {
                     gatherUp( simpleTasks, WorkerType.SIMPLE, false );
                     gatherUp( bulkTasks, WorkerType.BULK, false );
+                    Thread.sleep( 100 );
                 }
                 printOutResults( "Intermediate results" );
             }
