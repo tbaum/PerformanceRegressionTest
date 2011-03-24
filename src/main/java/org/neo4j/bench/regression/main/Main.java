@@ -31,9 +31,6 @@ import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.helpers.Args;
 import org.neo4j.kernel.EmbeddedGraphDatabase;
 
-import sun.misc.Signal;
-import sun.misc.SignalHandler;
-
 @SuppressWarnings( "restriction" )
 public class Main
 {
