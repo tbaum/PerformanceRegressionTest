@@ -46,24 +46,6 @@ public class Main
         final GraphDatabaseService db = new EmbeddedGraphDatabase( "db" );
         final MixedLoadBenchCase myCase = new MixedLoadBenchCase( timeToRun );
 
-        SignalHandler handler = new SignalHandler()
-        {
-            @Override
-            public void handle( Signal arg0 )
-            {
-                System.out.println( "Queued nodes currently : "
-                                    + myCase.getNodeQueue().size() );
-            }
-        };
-        /*
-         * SIGUSR1 is used by the JVM and INT, ABRT and friends
-         * are all defined for specific usage by POSIX. While SIGINT
-         * is conveniently issued by Ctrl-C, SIGUSR2 is for user defined
-         * behavior so this is what I use.
-         */
-        Signal signal = new Signal( "USR2" );
-        Signal.handle( signal, handler );
-
         myCase.run( db );
         db.shutdown();
         double[] results = myCase.getResults();
